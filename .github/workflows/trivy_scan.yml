@@ -1,0 +1,66 @@
+name: Trivy Python Scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x' # Update to match your project's Python version
+
+      # Step 3: Install Python dependencies
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      # Step 4: Install Trivy
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.41.0
+
+      # Step 5: Run Trivy to scan the project
+      - name: Run Trivy Scan
+        run: |
+          trivy fs . --exit-code 1 --severity HIGH,CRITICAL --skip-dirs __pycache__ > trivy.log || true
+          
+      # Step 6: Analyze Trivy Report to count vulnerabilities and scanned paths
+      - name: Analyze Trivy Report
+        run: |
+          # Count total paths scanned
+          total_paths_scanned=$(find . -type f -or -type d | wc -l)
+          echo "Total paths scanned: $total_paths_scanned"
+          
+          # Count vulnerabilities in the log file
+          total_vulnerabilities=$(grep -o "Severity: HIGH\|Severity: CRITICAL" trivy.log | wc -l)
+          echo "Total HIGH or CRITICAL vulnerabilities: $total_vulnerabilities"
+          
+          # If vulnerabilities are found, display the Trivy log
+          if [ $total_vulnerabilities -gt 0 ]; then
+            echo "HIGH or CRITICAL vulnerabilities detected!"
+            cat trivy.log
+          else
+            echo "No HIGH or CRITICAL vulnerabilities found."
+          fi
+
+      # Step 7: Upload the scan results
+      - name: Upload Trivy Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy-report
+          path: trivy.log
